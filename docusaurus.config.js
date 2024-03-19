@@ -9,7 +9,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: '大数据Guide',
-  tagline: 'Dinosaurs are cool',
+  tagline: '关于大数据的实践',
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
@@ -78,12 +78,12 @@ const config = {
             position: 'left',
             label: '大数据',
           },
-          {to: '/blog', label: 'Blog', position: 'left'},
-          {
-            href: 'https://github.com/facebook/docusaurus',
-            label: 'GitHub',
-            position: 'right',
-          },
+          // {to: '/blog', label: 'Blog', position: 'left'},
+          // {
+          //   href: 'https://github.com/facebook/docusaurus',
+          //   label: 'GitHub',
+          //   position: 'right',
+          // },
         ],
       },
       // footer: {

@@ -4,32 +4,30 @@ import styles from './styles.module.css';
 
 const FeatureList = [
   {
-    title: 'Easy to Use',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    title: 'Hadoop',
+    Svg: require('@site/static/img/hadoop.svg').default,
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
+          Hadoop是一个开源的分布式存储和计算框架，旨在处理大规模数据集。它最初由Apache软件基金会开发，是目前用于大数据处理的主流工具之一
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    title: 'Hive',
+    Svg: require('@site/static/img/Apache_Hive_logo.svg').default,
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
+          Apache Hive是建立在Hadoop之上的数据仓库工具，它提供了一种类似于SQL的查询语言,用于对存储在Hadoop集群中的数据进行查询和分析。
       </>
     ),
   },
   {
-    title: 'Powered by React',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
+    title: 'Spark',
+    Svg: require('@site/static/img/apache_spark-ar21.svg').default,
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
+          Apache Spark是一个快速、通用的集群计算系统，最初是为大规模数据处理而设计的。使用户能够轻松地编写并行处理应用程序。
+
       </>
     ),
   },
