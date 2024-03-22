@@ -1,3 +1,6 @@
+---
+custom_edit_url: null
+---
 ## Kafka 设计架构
 
 架构图如下：

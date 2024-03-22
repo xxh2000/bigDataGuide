@@ -1,3 +1,6 @@
+---
+custom_edit_url: null
+---
 ### 请简述Zookeeper的选举机制
 
 ####  服务器启动时期选举

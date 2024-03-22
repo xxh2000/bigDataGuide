@@ -1,5 +1,6 @@
 ---
 sidebar_position: 1
+custom_edit_url: null
 ---
 ## Spark Core
 ### 1. Spark为什么比mapreduce快？为什么快呢？ 快在哪里呢？
