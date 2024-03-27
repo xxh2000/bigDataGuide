@@ -158,3 +158,62 @@ sort by为每个reduce产生一个排序文件，在有些情况下，你需要�
 ### cluster by
 cluster by除了具有distribute by的功能外还兼具sort by的功能。但是排序只能是升序排序，不能指定排序规则为ASC或者DESC。
 当分区字段和排序字段相同cluster by可以简化distribute by+sort by 的SQL 写法，也就是说当distribute by和sort by 字段相同时，可以使用cluster by 代替distribute by和sort by
+
+## Hive动态分区
+
+### Hive动态分区参数配置
+
+- 往hive分区表中插入数据时，如果需要创建的分区很多，比如以表中某个字段进行分区存储，则需要复制粘贴修改很多sql去执行，效率低。因为hive是批处理系统，**所以hive提供了一个动态分区功能，其可以基于查询参数的位置去推断分区的名称，从而建立分区。**
+
+**使用动态分区表必须配置的参数**
+
+- set hive.exec.dynamic.partition =true（默认false）,表示开启动态分区功能；
+- set hive.exec.dynamic.partition.mode = nonstrict(默认strict),表示允许所有分区都是动态的，否则必须有静态分区字段；
+
+**动态分区相关调优参数**
+
+- set hive.exec.max.dynamic.partitions.pernode=100 （默认100，一般可以设置大一点，比如1000）； 表示每个maper或reducer可以允许创建的最大动态分区个数，默认是100，超出则会报错。
+- set hive.exec.max.dynamic.partitions =1000(默认值) ； 表示一个动态分区语句可以创建的最大动态分区个数，超出报错；
+- set hive.exec.max.created.files =10000(默认) 全局可以创建的最大文件个数，超出报错
+
+### 动态分区的问题
+
+#### 问题的引入
+
+在hive sql中使用动态分区非常方便，也比较常用，但是在使用的过程中会带来一些问题。
+
+比如：在一段sql语句中我需要指定两个字段当做动态分区，一个字段的基数为7，另一个为4，这就是28个分区，当sql语句的最后一个job是一个仅有map阶段的任务，此时如果数据量有4000个map，那么这种情况下map任务在往hive分区中写的时候，每个map几乎都要产生28个文件，这样就会产生4000*28个文件，带来大量的小文件。比如如下一个简单的sql:
+
+```csharp
+insert overwrite table test1 partition(week,type)
+select * from test_table;
+```
+
+这个sql只有map任务，在数据量的情况下可能会产生大量的map，导致产生大量的小文件，实际上不仅仅是最后一个job只有map的任务有影响，reduce同样如此，但是一般情况下reduce的数目不会太大，并且reduce数目比较好控制
+
+#### 解决方案
+
+最后一个阶段只有map，若是有reduce的话，可以把相同分区的数据发送到一个reduce处理
+
+```csharp
+insert overwrite table test1 partition(week,type)
+select
+    *
+from test_table
+DISTRIBUTE BY week,type;
+```
+
+这样的话产生的文件数就等于分区数目了（在不限制reduce的情况下），文件数目大大减小，但是文件数目也太少了吧，并且由于数据分布不均匀，分区下的文件大小差异特别大。并且由于不同reduce处理的数据量差异，造成部分reduce执行速度过慢，影响了整体的速度。
+
+若是想把数据均匀的分配的reduce上，DISTRIBUTE BY的字段就不能使用分区下的字段，可以使用DISTRIBUTE BY rand(),这样rand取哈希然后对reduce数目取余，保证了每条数据分配到所有reduce的可能性是相等的，这样reduce处理的数据量就是均匀的，在数据量比较大的情况下每个reduce产生的文件数为动态分区的个数，产生的文件为reduceTask数*分区个数。
+
+```csharp
+set hive.exec.reducers.max=500;
+insert overwrite table test1 partition(week,type)
+select
+    *
+from test_table
+DISTRIBUTE BY rand();
+```
+
+这样产生的文件数就大大减少了。

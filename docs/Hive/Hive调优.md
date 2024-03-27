@@ -30,6 +30,7 @@ Hive拥有多种join算法，包括Common Join，Map Join，Bucket Map Join，So
 Common Join是Hive中最稳定的join算法，其通过一个MapReduce Job完成一个join操作。Map端负责读取join操作所需表的数据，并按照关联字段进行分区，通过Shuffle，将其发送到Reduce端，相同key的数据在Reduce端完成最终的Join操作。如下图所示
 
 ![img.png](img.png)
+
 需要注意的是，sql语句中的join操作和执行计划中的Common Join任务并非一对一的关系，一个sql语句中的相邻的且关联字段相同的多个join操作可以合并为一个Common Join任务。
 
 ##### Map JOIN
