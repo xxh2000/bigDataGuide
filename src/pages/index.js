@@ -29,13 +29,6 @@ function HomepageHeader() {
 }
 
 export default function Home() {
-    var _hmt = _hmt || [];
-    (function() {
-        var hm = document.createElement("script");
-        hm.src = "https://hm.baidu.com/hm.js?522f6ad48961ee3e5d72f2757e8792ec";
-        var s = document.getElementsByTagName("script")[0];
-        s.parentNode.insertBefore(hm, s);
-    })();
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
