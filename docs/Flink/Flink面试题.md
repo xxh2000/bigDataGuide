@@ -470,9 +470,21 @@ Flink 中的重启策略用于在程序运行过程中发生故障时，如何�
 
 如果没有启用 checkpointing，则使用无重启（no restart）策略。如果启用了 checkpointing，但没有配置重启策略，则使用固定间隔（fixed-delay）策略。在固定间隔策略中，Flink 会等待一个固定的时间间隔后，重新启动失败的算子。这个时间间隔可以通过 flink-conf.yaml 中的 restart.delay 配置项来设置。
 
+### 如果下级存储不支持事务，Flink 怎么保证 exactly-once
 
+端到端的 exactly-once 对 sink 要求比较高，具体实现主要有**幂等写入**和**事务性写入**两种方式。
 
+幂等写入的场景依赖于业务逻辑，更常见的是用事务性写入。而事务性写入又有预写日志（WAL）和两阶段提交（2PC）两种方式。
 
+如果外部系统不支持事务，那么可以用预写日志的方式，把结果数据先当成状态保存，然后在收到 checkpoint 完成的通知时，一次性写入 sink 系统。
+
+### 对于迟到数据是怎么处理的
+
+Flink中 WaterMark 和 Window 机制解决了流式数据的乱序问题，对于因为延迟而顺序有误的数据，可以根据eventTime进行业务处理，对于延迟的数据Flink也有自己的解决办法，主要的办法是给定一个允许延迟的时间，在该时间范围内仍可以接受处理延迟数据：
+
+- 设置允许延迟的时间是通过allowedLateness(lateness: Time)设置
+- 保存延迟数据则是通过sideOutputLateData(outputTag: OutputTag[T])保存
+- 获取延迟数据是通过DataStream.getSideOutput(tag: OutputTag[X])获取
 
 
 

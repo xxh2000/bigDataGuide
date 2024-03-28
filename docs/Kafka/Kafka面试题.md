@@ -200,6 +200,11 @@ val allTopicPartitions = ctx.partitionsForTopic.flatMap { case(topic, partitions
 通过操作系统的Page Cache，Kafka的读写操作基本上是基于内存的，读写速度得到了极大的提升。
 
 ### 零拷贝
+参考：
+
+* https://cloud.tencent.com/developer/article/1421266
+
+* [通俗易懂的Kafka零拷贝机制](https://blog.csdn.net/yxf19034516/article/details/108518194)
 
 linux操作系统 “零拷贝” 机制使用了sendfile方法， 允许操作系统将数据从Page Cache 直接发送到网络，只需要最后一步的copy操作将数据复制到 NIC 缓冲区， 这样避免重新复制数据 。示意图如下
 
@@ -213,8 +218,8 @@ linux操作系统 “零拷贝” 机制使用了sendfile方法， 允许操作�
 
 3. 操作系统将数据的描述符拷贝到Socket Buffer中。Socket 缓存中仅仅会拷贝一个描述符过去，不会拷贝数据到 Socket 缓存。
      Kafka数据零拷贝的过程如下图所示
-![img.png](img.png)
-通过零拷贝技术，就不需要把 内核空间页缓存里的数据拷贝到应用层缓存，再从应用层缓存拷贝到 Socket 缓存了，两次拷贝都省略了，所以叫做零拷贝。这个过程大大的提升了数据消费时读取文件数据的性能。Kafka 从磁盘读数据的时候，会先看看内核空间的页缓存中是否有，如果有的话，直接通过网关发送出去
+     ![img.png](img.png)
+     通过零拷贝技术，就不需要把 内核空间页缓存里的数据拷贝到应用层缓存，再从应用层缓存拷贝到 Socket 缓存了，两次拷贝都省略了，所以叫做零拷贝。这个过程大大的提升了数据消费时读取文件数据的性能。Kafka 从磁盘读数据的时候，会先看看内核空间的页缓存中是否有，如果有的话，直接通过网关发送出去
 
 
 ### 分区分段+索引
@@ -239,3 +244,87 @@ Kafka数据读写也是批量的而不是单条的。
 
 Kafka速度的秘诀在于，它把所有的消息都变成一个批量的文件，并且进行合理的批量压缩，减少网络IO损耗，通过mmap提高I/O速度，写入数据的时候由于单个Partion是末尾添加所以速度最优；读取数据的时候配合sendfile直接暴力输出。
 
+## Kafka如何实现精确一次
+
+**Kafka 分别通过 幂等性（Idempotence）和事务（Transaction）这两种机制实现了 精确一次（exactly once）语义。**
+
+### 幂等性（Idempotence）
+
+`幂等`这个词原是数学领域中的概念，指的是某些操作或函数能够被执行多次，但每次得到的结果都是不变的。
+
+**幂等性最大的优势在于我们可以安全地重试任何幂等性操作，反正它们也不会破坏我们的系统状态。**
+
+在 Kafka 中，Producer 默认不是幂等性的，但我们可以创建幂等性 Producer。它其实是 0.11.0.0 版本引入的新功能。指定 Producer 幂等性的方法很简单，仅需要设置一个参数即可，即 `props.put(“enable.idempotence”, ture)`，或 `props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG， true)`。
+
+enable.idempotence 被设置成 true 后，Producer 自动升级成幂等性 Producer，其他所有的代码逻辑都不需要改变。Kafka 自动帮你做消息的重复去重。
+
+底层具体的原理很简单，就是经典的用`空间去换时间`的优化思路，即**在 Broker 端多保存一些字段。当 Producer 发送了具有相同字段值的消息后，Broker 能够自动知晓这些消息已经重复了，于是可以在后台默默地把它们“丢弃”掉**。
+
+> 当然，实际的实现原理并没有这么简单，但你大致可以这么理解
+
+Kafka 为了实现幂等性，它在底层设计架构中引入了 ProducerID 和 SequenceNumber。
+
+Producer 需要做的只有两件事：
+
+- 1）初始化时像向 Broker 申请一个 ProducerID
+- 2）为每条消息绑定一个 SequenceNumber
+
+Kafka Broker 收到消息后会以 ProducerID 为单位存储 SequenceNumber，也就是说即时 Producer 重复发送了， Broker 端也会将其过滤掉。
+
+实现比较简单，同样的限制也比较大：
+
+- 首先，它只能保证单分区上的幂等性
+
+  。即一个幂等性 Producer 能够保证某个主题的一个分区上不出现重复消息，它无法实现多个分区的幂等性。
+
+  - 因为 SequenceNumber 是以 Topic + Partition 为单位单调递增的，如果一条消息被发送到了多个分区必然会分配到不同的 SequenceNumber ,导致重复问题。
+
+- 其次，它只能实现单会话上的幂等性
+
+  。不能实现跨会话的幂等性。当你重启 Producer 进程之后，这种幂等性保证就丧失了。
+
+  - 重启 Producer 后会分配一个新的 ProducerID，相当于之前保存的 SequenceNumber 就丢失了。
+
+### 事务（Transaction）
+
+Kafka 的事务概念类似于我们熟知的数据库提供的事务。
+
+Kafka 自 0.11 版本开始也提供了对事务的支持，目前主要是在 read committed 隔离级别上做事情。它能保证多条消息原子性地写入到目标分区，同时也能保证 Consumer 只能看到事务成功提交的消息。
+
+事务型 Producer 能够保证将消息原子性地写入到多个分区中。这批消息要么全部写入成功，要么全部失败。另外，事务型 Producer 也不惧进程的重启。Producer 重启回来后，Kafka 依然保证它们发送消息的精确一次处理。
+
+设置事务型 Producer 的方法也很简单，满足两个要求即可：
+
+- 和幂等性 Producer 一样，开启 enable.idempotence = true。
+- 设置 Producer 端参数 transactional. id。最好为其设置一个有意义的名字。
+
+此外，你还需要在 Producer 代码中做一些调整，如这段代码所示：
+
+```java
+
+producer.initTransactions();
+try {
+            producer.beginTransaction();
+            producer.send(record1);
+            producer.send(record2);
+            producer.commitTransaction();
+} catch (KafkaException e) {
+            producer.abortTransaction();
+}
+
+```
+
+
+
+和普通 Producer 代码相比，事务型 Producer 的显著特点是调用了一些事务 API，如 initTransaction
+
+beginTransaction、commitTransaction 和 abortTransaction，它们分别对应事务的初始化、事务开始、事务提交以及事务终止。
+
+这段代码能够保证 Record1 和 Record2 被当作一个事务统一提交到 Kafka，要么它们全部提交成功，要么全部写入失败。
+
+实际上即使写入失败，Kafka 也会把它们写入到底层的日志中，也就是说 Consumer 还是会看到这些消息。因此在 Consumer 端，读取事务型 Producer 发送的消息也是需要一些变更的。修改起来也很简单，设置 isolation.level 参数的值即可。当前这个参数有两个取值：
+
+- read_uncommitted：这是默认值，表明 Consumer 能够读取到 Kafka 写入的任何消息，不论事务型 Producer 提交事务还是终止事务，其写入的消息都可以读取。
+  - 很显然，如果你用了事务型 Producer，那么对应的 Consumer 就不要使用这个值。
+- read_committed：表明 Consumer 只会读取事务型 Producer 成功提交事务写入的消息。
+  - 当然了，它也能看到非事务型 Producer 写入的所有消息。
